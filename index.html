@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>NutriScan</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 15px;
+      background: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      color: #2c7be5;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      font-size: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #2c7be5;
+      color: white;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+    #results, #insights {
+      margin-top: 20px;
+    }
+    canvas {
+      max-width: 100%;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🥦 NutriScan</h1>
+
+  <input type="text" id="search" placeholder="Search food product (e.g., Nutella)" />
+  <button onclick="searchProduct()">🔍 Search</button>
+  <button onclick="startScan()">📷 Scan Barcode</button>
+
+  <div id="reader" class="hidden"></div>
+  <div id="results"></div>
+  <div id="insights"></div>
+  <canvas id="chart" class="hidden"></canvas>
+
+  <script>
+    const searchInput = document.getElementById('search');
+    const resultsDiv = document.getElementById('results');
+    const insightsDiv = document.getElementById('insights');
+    const chartCanvas = document.getElementById('chart');
+    const readerDiv = document.getElementById('reader');
+
+    function displayNutrition(data) {
+      const nutr = data.product.nutriments;
+      const name = data.product.product_name || 'Unnamed product';
+      const img = data.product.image_small_url || '';
+
+      const sugars = nutr.sugars_100g || 0;
+      const fat = nutr.fat_100g || 0;
+      const protein = nutr.proteins_100g || 0;
+      const salt = nutr.salt_100g || 0;
+      const fiber = nutr.fiber_100g || 0;
+
+      resultsDiv.innerHTML = `
+        <h2>${name}</h2>
+        ${img ? `<img src="${img}" style="max-width:150px" />` : ''}
+        <p><strong>Sugar:</strong> ${sugars}g</p>
+        <p><strong>Fat:</strong> ${fat}g</p>
+        <p><strong>Protein:</strong> ${protein}g</p>
+        <p><strong>Salt:</strong> ${salt}g</p>
+        <p><strong>Fiber:</strong> ${fiber}g</p>
+      `;
+
+      showChart(sugars, fat, protein, salt, fiber);
+      showInsights({ sugars, fat, protein, salt, fiber });
+    }
+
+    function showChart(sugar, fat, protein, salt, fiber) {
+      chartCanvas.classList.remove('hidden');
+      new Chart(chartCanvas, {
+        type: 'bar',
+        data: {
+          labels: ['Sugar', 'Fat', 'Protein', 'Salt', 'Fiber'],
+          datasets: [{
+            label: 'per 100g',
+            data: [sugar, fat, protein, salt, fiber],
+            backgroundColor: ['#f54242', '#f5a623', '#4caf50', '#9c27b0', '#2196f3']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    function showInsights({ sugars, fat, protein, salt, fiber }) {
+      let insights = [];
+
+      if (sugars > 15) insights.push('⚠️ High sugar content.');
+      else if (sugars < 5) insights.push('✅ Low in sugar.');
+
+      if (fat > 17) insights.push('⚠️ High fat.');
+      else if (fat < 5) insights.push('✅ Low in fat.');
+
+      if (protein >= 10) insights.push('💪 Good protein source.');
+
+      if (salt > 1.2) insights.push('⚠️ High in salt.');
+
+      if (fiber >= 3) insights.push('✅ Rich in fiber.');
+
+      insightsDiv.innerHTML = `
+        <h3>Insights</h3>
+        <ul>${insights.map(i => `<li>${i}</li>`).join('')}</ul>
+      `;
+    }
+
+    async function searchProduct() {
+      const query = searchInput.value.trim();
+      if (!query) return alert("Enter a product name");
+      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.products && data.products.length > 0) {
+        displayNutrition({ product: data.products[0] });
+      } else {
+        alert("No product found.");
+      }
+    }
+
+    function startScan() {
+      readerDiv.classList.remove('hidden');
+      const scanner = new Html5Qrcode("reader");
+      scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        async code => {
+          await scanner.stop();
+          readerDiv.classList.add('hidden');
+          const url = `https://world.openfoodfacts.org/api/v0/product/${code}.json`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.status === 1) {
+            displayNutrition(data);
+          } else {
+            alert("Product not found");
+          }
+        },
+        error => {}
+      );
+    }
+  </script>
+
+</body>
+</html>
