@@ -43,7 +43,7 @@
   <div id="product" class="container"></div>
 
   <div class="telegram-btn">
-    <a href="https://t.me/NutriBot?start=start" class="btn btn-success">📲 Open in Telegram</a>
+    <a href="https://t.me/NutriiScan_bot?start=start" class="btn btn-success">📲 Open in Telegram</a>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@latest"></script>
@@ -104,17 +104,6 @@
         </div>
       `;
       document.getElementById("product").innerHTML = html;
-
-      // Send to Telegram Bot
-      fetch(`https://api.telegram.org/bot8169115312:AAFTIMWgHWsui1EqTp_cnz-05cfAWowno4s/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: "8169115312", // or your actual Telegram user ID
-          text: `📦 *Scanned Product:*\nName: ${product.product_name || "Unnamed"}\nBrand: ${product.brands || "?"}\nNutri-Score: ${product.nutrition_grade_fr || "?"}`,
-          parse_mode: "Markdown"
-        })
-      });
     }
 
     function gradeColor(grade) {
