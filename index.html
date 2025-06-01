@@ -1,120 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>NutriScan</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"/>
-  <style>
-    body {
-      background: #f8f9fa;
-      font-family: 'Segoe UI', sans-serif;
-      text-align: center;
-      padding: 20px;
-    }
-    .scanner, video {
-      margin: 20px auto;
-      max-width: 400px;
-    }
-    .product-card {
-      margin-top: 30px;
-      text-align: left;
-    }
-    .nutri-score {
-      font-size: 2rem;
-      font-weight: bold;
-    }
-    .telegram-btn {
-      margin-top: 30px;
-    }
-  </style>
+  <meta charset="UTF-8">
+  <title>NutriiScan</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/umd/index.min.js"></script>
 </head>
-<body>
-  <h1>🥦 NutriScan</h1>
-  <p>Scan a barcode or enter it manually to see nutrition insights.</p>
+<body style="font-family: sans-serif; text-align: center; padding: 2rem;">
+  <h1>NutriiScan 🍎</h1>
 
-  <div class="scanner">
-    <input id="barcodeInput" class="form-control" placeholder="Enter or scan barcode..." />
-    <button class="btn btn-primary mt-2" onclick="lookupProduct()">🔍 Lookup</button>
-    <button class="btn btn-outline-secondary mt-2" onclick="startScanner()">📷 Start Camera Scanner</button>
-    <video id="video" width="100%" style="display:none;" autoplay></video>
-  </div>
+  <video id="video" width="300" style="display: none; border: 1px solid #ccc;" autoplay></video><br><br>
 
-  <div id="product" class="container"></div>
+  <button onclick="startScanner()">📷 Scan Barcode</button><br><br>
 
-  <div class="telegram-btn">
-    <a href="https://t.me/NutriiScan_bot?start=start" class="btn btn-success">📲 Open in Telegram</a>
-  </div>
+  <input id="barcodeInput" type="text" placeholder="Or enter barcode manually" style="padding: 10px; width: 80%;">
+  <button onclick="submitBarcode()">🔍 Lookup</button>
 
-  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@latest"></script>
+  <p id="response" style="margin-top: 1rem; color: green;"></p>
+
   <script>
-    const codeReader = new ZXing.BrowserBarcodeReader();
-    let videoInput = null;
+    const video = document.getElementById('video');
+    const barcodeInput = document.getElementById('barcodeInput');
+    const responseBox = document.getElementById('response');
+    const codeReader = new ZXing.BrowserMultiFormatReader();
 
     async function startScanner() {
-      const videoElement = document.getElementById("video");
-      videoElement.style.display = "block";
+      responseBox.textContent = "";
+      try {
+        const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
+        if (!devices.length) {
+          alert("No camera found.");
+          return;
+        }
 
-      const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
-      if (devices.length === 0) {
-        alert("No camera found.");
-        return;
+        video.style.display = "block";
+
+        await codeReader.decodeOnceFromVideoDevice(devices[0].deviceId, 'video').then(result => {
+          barcodeInput.value = result.text;
+          video.style.display = "none";
+          codeReader.reset();
+          submitBarcode();
+        }).catch(err => {
+          console.error("Scan error:", err);
+          alert("Could not scan barcode.");
+          video.style.display = "none";
+        });
+
+      } catch (err) {
+        alert("Camera access failed: " + err.message);
       }
+    }
 
-      videoInput = devices[0].deviceId;
-      codeReader.decodeOnceFromVideoDevice(videoInput, 'video').then(result => {
-        document.getElementById("barcodeInput").value = result.text;
-        lookupProduct();
-        videoElement.style.display = "none";
-        codeReader.reset();
+    function submitBarcode() {
+      const barcode = barcodeInput.value.trim();
+      if (!barcode) return alert("Please enter or scan a barcode.");
+
+      fetch('http://localhost:8000/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode })
+      }).then(res => res.json()).then(data => {
+        responseBox.textContent = data.message || "Lookup complete!";
       }).catch(err => {
+        responseBox.textContent = "Failed to send to bot.";
         console.error(err);
-        alert("Scan failed.");
       });
-    }
-
-    async function lookupProduct() {
-      const code = document.getElementById("barcodeInput").value.trim();
-      if (!code) return alert("Please enter or scan a barcode.");
-
-      const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
-      const data = await res.json();
-
-      if (!data.product) {
-        document.getElementById("product").innerHTML = "<p class='text-danger'>❌ Product not found.</p>";
-        return;
-      }
-
-      showProduct(data.product);
-    }
-
-    function showProduct(product) {
-      const html = `
-        <div class="card product-card">
-          <div class="card-body">
-            <h3>${product.product_name || "Unnamed Product"}</h3>
-            <p><strong>Brand:</strong> ${product.brands || "?"}</p>
-            <p><strong>Nutri-Score:</strong> 
-              <span class="nutri-score text-${gradeColor(product.nutrition_grade_fr)}">
-                ${product.nutrition_grade_fr?.toUpperCase() || "?"}
-              </span>
-            </p>
-            <p><strong>Ingredients:</strong> ${product.ingredients_text || "Not available"}</p>
-          </div>
-        </div>
-      `;
-      document.getElementById("product").innerHTML = html;
-    }
-
-    function gradeColor(grade) {
-      switch ((grade || "").toLowerCase()) {
-        case "a": return "success";
-        case "b": return "info";
-        case "c": return "warning";
-        case "d":
-        case "e": return "danger";
-        default: return "secondary";
-      }
     }
   </script>
 </body>
